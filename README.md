@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/icons/BannerGithub.png" alt="Tracer Banner"/>
+  <img src="https://raw.githubusercontent.com/Tracer-Cloud/open-sre-agent/main/app/icons/BannerGithub.png" alt="Tracer Banner" width="100%">
 </p>
 
 <p align="center">
