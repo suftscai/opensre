@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Remove CodeQL findings under vendored e2e pipeline_code fixtures from SARIF output.
 
-Glob-based filter actions can miss some URI forms; this script resolves artifactLocation
-(uri, uriBaseId, index) and drops any result whose path lies under upstream_*/pipeline_code/.
+Resolves physical artifactLocation (uri, uriBaseId, index). Also matches path substrings on the
+full result JSON (after URI-decoding) so encoded paths and snippet-only locations are covered.
 """
 
 from __future__ import annotations
@@ -100,6 +100,13 @@ def _is_vendored(path: str) -> bool:
     return any(m in p for m in _VENDORED_MARKERS)
 
 
+def _blob_references_vendored(r: dict[str, Any]) -> bool:
+    """Fallback when paths are only in messages/snippets or URI-encoded (%2F) in the JSON."""
+    blob = json.dumps(r, separators=(",", ":"))
+    norm = unquote(blob).replace("\\", "/")
+    return any(m in norm for m in _VENDORED_MARKERS)
+
+
 def _filter_run(run: dict[str, Any]) -> None:
     artifacts = run.get("artifacts")
     if not isinstance(artifacts, list):
@@ -122,6 +129,8 @@ def _filter_run(run: dict[str, Any]) -> None:
             if path is not None and _is_vendored(path):
                 drop = True
                 break
+        if not drop and _blob_references_vendored(r):
+            drop = True
         if not drop:
             kept.append(r)
     run["results"] = kept
