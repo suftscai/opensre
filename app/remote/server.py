@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel
 
+from app.remote.system_metrics import collect_system_metrics
 from app.version import get_version
 
 load_dotenv(override=False)
@@ -85,7 +86,13 @@ class InvestigationMeta(BaseModel):
 
 @app.get("/ok")
 def health_check() -> dict[str, Any]:
-    return {"ok": True, "version": get_version()}
+    return {
+        "ok": True,
+        "version": get_version(),
+        "server_type": "lightweight",
+        "endpoints": ["/investigate", "/investigate/stream", "/investigations"],
+        "system": collect_system_metrics(),
+    }
 
 
 @app.post("/investigate", response_model=InvestigateResponse)
@@ -184,14 +191,14 @@ async def investigate_stream(req: InvestigateRequest) -> Response:
         except Exception:
             logger.exception("Streaming investigation failed")
             yield 'event: error\ndata: {"detail": "internal error"}\n\n'
-
-        _persist_streamed_result(
-            alert_name=alert_name,
-            pipeline_name=pipeline_name,
-            severity=severity,
-            state=accumulated_state,
-            logger=logger,
-        )
+        finally:
+            _persist_streamed_result(
+                alert_name=alert_name,
+                pipeline_name=pipeline_name,
+                severity=severity,
+                state=accumulated_state,
+                logger=logger,
+            )
 
     return StreamingResponse(  # type: ignore[return-value]
         _event_generator(),

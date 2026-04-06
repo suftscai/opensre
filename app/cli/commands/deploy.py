@@ -9,6 +9,7 @@ import click
 
 from app.cli.context import is_json_output, is_yes
 from app.cli.errors import OpenSREError
+from app.deployment.ec2_config import load_remote_outputs
 
 
 def _deploy_style(questionary: Any) -> Any:
@@ -26,9 +27,7 @@ def _deploy_style(questionary: Any) -> Any:
 def _get_deployment_status() -> dict[str, str]:
     """Load the current EC2 deployment state, if any."""
     try:
-        from tests.shared.infrastructure_sdk.config import load_outputs
-
-        outputs = load_outputs("tracer-ec2-remote")
+        outputs = load_remote_outputs()
         return {
             "ip": outputs.get("PublicIpAddress", ""),
             "instance_id": outputs.get("InstanceId", ""),
@@ -50,6 +49,29 @@ def _persist_remote_url(outputs: Mapping[str, object]) -> None:
     save_named_remote("ec2", url, set_active=True, source="deploy")
     click.echo(f"\n  Remote URL saved as 'ec2': {url}")
     click.echo("  You can now run:\n    opensre remote health")
+
+
+def _prompt_deploy_branch(questionary: Any, style: Any, *, default: str = "main") -> str | None:
+    """Prompt for the git branch to deploy."""
+    branch = questionary.text(
+        "Git branch to deploy:",
+        default=default,
+        style=style,
+    ).ask()
+    if branch is None:
+        return None
+    resolved = str(branch).strip()
+    return resolved or default
+
+
+def _redeploy_ec2(ctx: click.Context, *, branch: str, console: Any) -> None:
+    """Tear down the managed EC2 instance and deploy a fresh one."""
+    console.print()
+    console.print("  [bold]Tearing down existing deployment...[/bold]")
+    ctx.invoke(deploy_ec2, down=True, branch="main")  # branch unused when down=True
+    console.print()
+    console.print("  [bold]Deploying fresh instance...[/bold]")
+    ctx.invoke(deploy_ec2, down=False, branch=branch)
 
 
 def _run_deploy_interactive(ctx: click.Context) -> None:
@@ -101,11 +123,7 @@ def _run_deploy_interactive(ctx: click.Context) -> None:
         return
 
     if action == "ec2":
-        branch = questionary.text(
-            "Git branch to deploy:",
-            default="main",
-            style=style,
-        ).ask()
+        branch = _prompt_deploy_branch(questionary, style)
         if branch is None:
             return
 
@@ -128,15 +146,11 @@ def _run_deploy_interactive(ctx: click.Context) -> None:
         ).ask():
             console.print("  [dim]Cancelled.[/dim]")
             return
-        ctx.invoke(deploy_ec2, down=True, branch="main")
+        ctx.invoke(deploy_ec2, down=True, branch="main")  # branch unused when down=True
         return
 
     if action == "redeploy":
-        branch = questionary.text(
-            "Git branch to deploy:",
-            default="main",
-            style=style,
-        ).ask()
+        branch = _prompt_deploy_branch(questionary, style)
         if branch is None:
             return
 
@@ -148,12 +162,7 @@ def _run_deploy_interactive(ctx: click.Context) -> None:
             console.print("  [dim]Cancelled.[/dim]")
             return
 
-        console.print()
-        console.print("  [bold]Tearing down existing deployment...[/bold]")
-        ctx.invoke(deploy_ec2, down=True, branch="main")
-        console.print()
-        console.print("  [bold]Deploying fresh instance...[/bold]")
-        ctx.invoke(deploy_ec2, down=False, branch=branch)
+        _redeploy_ec2(ctx, branch=branch, console=console)
 
 
 def _check_deploy_health(status: dict[str, str], console: Any) -> None:

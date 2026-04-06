@@ -106,8 +106,7 @@ def stream_investigation_cli(
         severity=severity,
     )
 
-    event_queue: queue.Queue[StreamEvent | None] = queue.Queue()
-    error_holder: list[BaseException] = []
+    event_queue: queue.Queue[StreamEvent | Exception | None] = queue.Queue()
 
     def _run_async() -> None:
         loop = asyncio.new_event_loop()
@@ -123,8 +122,8 @@ def stream_investigation_cli(
                     event_queue.put(evt)
 
             loop.run_until_complete(_pump())
-        except BaseException as exc:
-            error_holder.append(exc)
+        except Exception as exc:
+            event_queue.put(exc)
         finally:
             event_queue.put(None)
             loop.close()
@@ -134,13 +133,14 @@ def stream_investigation_cli(
 
     while True:
         item = event_queue.get()
+        if isinstance(item, Exception):
+            thread.join()
+            raise item
         if item is None:
             break
         yield item
 
     thread.join()
-    if error_holder:
-        raise error_holder[0]
 
 
 def run_investigation_cli_streaming(
