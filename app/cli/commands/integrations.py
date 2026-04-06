@@ -70,3 +70,18 @@ def verify_integration(service: str | None, send_slack_test: bool) -> None:
 
     cmd_verify(service, send_slack_test=send_slack_test)
     capture_integration_verified(service or "all")
+
+
+@integrations.command(name="vercel")
+@click.option(
+    "--limit",
+    default=20,
+    show_default=True,
+    type=click.IntRange(1),
+    help="Maximum incidents to show.",
+)
+def browse_vercel_incidents(limit: int) -> None:
+    """Browse Vercel incidents and view or execute RCA."""
+    from app.integrations.vercel_incidents import cmd_vercel_incidents
+
+    cmd_vercel_incidents(limit=limit)

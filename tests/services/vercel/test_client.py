@@ -134,10 +134,37 @@ def test_get_deployment_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["deployment"]["error"] == "Function crashed"
 
 
+def test_get_deployment_normalizes_git_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "id": "dpl_xyz",
+        "url": "proj-xyz.vercel.app",
+        "name": "proj",
+        "readyState": "ERROR",
+        "errorMessage": "Function crashed",
+        "createdAt": 1704067200000,
+        "meta": {
+            "githubCommitSha": "abc123",
+            "githubCommitRef": "main",
+            "githubRepo": "org/proj",
+        },
+        "build": {},
+    }
+    monkeypatch.setattr(
+        "app.services.vercel.client.httpx.Client.get",
+        lambda _self, _path, **_kw: _FakeResponse(payload),
+    )
+    result = _client().get_deployment("dpl_xyz")
+    assert result["success"] is True
+    assert result["deployment"]["meta"]["github_commit_sha"] == "abc123"
+    assert result["deployment"]["meta"]["github_commit_ref"] == "main"
+    assert result["deployment"]["meta"]["github_repo"] == "org/proj"
+    assert result["deployment"]["raw_meta"]["githubCommitSha"] == "abc123"
+
+
 def test_get_deployment_events_list_response(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = [
-        {"type": "stdout", "created": 1704067200000, "text": "Building..."},
-        {"type": "stderr", "created": 1704067201000, "text": "Error: module not found"},
+        {"id": "evt_1", "type": "stdout", "created": 1704067200000, "text": "Building..."},
+        {"id": "evt_2", "type": "stderr", "created": 1704067201000, "text": "Error: module not found"},
     ]
     monkeypatch.setattr(
         "app.services.vercel.client.httpx.Client.get",
@@ -146,6 +173,7 @@ def test_get_deployment_events_list_response(monkeypatch: pytest.MonkeyPatch) ->
     result = _client().get_deployment_events("dpl_xyz")
     assert result["success"] is True
     assert result["total"] == 2
+    assert result["events"][0]["id"] == "evt_1"
     assert result["events"][1]["text"] == "Error: module not found"
 
 
@@ -161,6 +189,7 @@ def test_get_runtime_logs_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["success"] is True
     assert result["total"] == 1
     assert result["logs"][0]["id"] == "log_1"
+    assert result["logs"][0]["message"] == "invoked"
 
 
 def test_team_params_included_when_set(monkeypatch: pytest.MonkeyPatch) -> None:

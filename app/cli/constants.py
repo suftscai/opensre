@@ -23,25 +23,33 @@ SETUP_SERVICES: tuple[str, ...] = (
     "coralogix",
     "datadog",
     "grafana",
+    "github",
     "honeycomb",
     "mongodb",
     "opensearch",
     "rds",
+    "sentry",
     "slack",
     "tracer",
 )
 
 VERIFY_SERVICES: tuple[str, ...] = (
-    "aws",
-    "coralogix",
-    "datadog",
     "grafana",
+    "datadog",
     "honeycomb",
-    "mongodb",
-    "opsgenie",
+    "coralogix",
+    "aws",
     "slack",
     "tracer",
+    "github",
+    "sentry",
+    "mongodb",
+    "opsgenie",
+    "google_docs",
     "vercel",
+    "kafka",
+    "clickhouse",
+    "bitbucket",
 )
 
 MANAGED_INTEGRATION_SERVICES: tuple[str, ...] = tuple(

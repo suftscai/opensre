@@ -20,6 +20,40 @@ _BASE_URL = "https://api.vercel.com"
 _DEFAULT_TIMEOUT = 30
 
 
+def _normalize_git_meta(meta: object) -> dict[str, str]:
+    meta_dict = meta if isinstance(meta, dict) else {}
+    return {
+        "github_commit_sha": str(meta_dict.get("githubCommitSha", "")).strip(),
+        "github_commit_message": str(meta_dict.get("githubCommitMessage", "")).strip(),
+        "github_commit_ref": str(meta_dict.get("githubCommitRef", "")).strip(),
+        "github_repo": str(meta_dict.get("githubRepo", "")).strip(),
+    }
+
+
+def _extract_event_text(event: dict[str, Any]) -> str:
+    text = event.get("text")
+    if text is not None:
+        return str(text)
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        payload_text = payload.get("text")
+        if payload_text is not None:
+            return str(payload_text)
+    return ""
+
+
+def _extract_runtime_log_message(log: dict[str, Any]) -> str:
+    payload = log.get("payload")
+    if isinstance(payload, dict):
+        for key in ("text", "message", "body"):
+            value = payload.get(key)
+            if value is not None:
+                return str(value)
+    if payload is not None and not isinstance(payload, dict):
+        return str(payload)
+    return ""
+
+
 class VercelConfig(StrictConfigModel):
     api_token: str
     team_id: str = ""
@@ -139,12 +173,8 @@ class VercelClient:
                     "created_at": d.get("createdAt", ""),
                     "ready_at": d.get("ready", ""),
                     "error": d.get("errorMessage", "") or d.get("errorCode", ""),
-                    "meta": {
-                        "github_commit_sha": d.get("meta", {}).get("githubCommitSha", ""),
-                        "github_commit_message": d.get("meta", {}).get("githubCommitMessage", ""),
-                        "github_commit_ref": d.get("meta", {}).get("githubCommitRef", ""),
-                        "github_repo": d.get("meta", {}).get("githubRepo", ""),
-                    },
+                    "meta": _normalize_git_meta(d.get("meta", {})),
+                    "raw_meta": d.get("meta", {}) if isinstance(d.get("meta", {}), dict) else {},
                 }
                 for d in data.get("deployments", [])
             ]
@@ -169,6 +199,7 @@ class VercelClient:
             resp = self._get_client().get(f"/v13/deployments/{deployment_id}", params=params)
             resp.raise_for_status()
             data = resp.json()
+            raw_meta = data.get("meta", {}) if isinstance(data.get("meta", {}), dict) else {}
             return {
                 "success": True,
                 "deployment": {
@@ -178,7 +209,8 @@ class VercelClient:
                     "state": data.get("readyState", ""),
                     "error": data.get("errorMessage", "") or data.get("errorCode", ""),
                     "created_at": data.get("createdAt", ""),
-                    "meta": data.get("meta", {}),
+                    "meta": _normalize_git_meta(raw_meta),
+                    "raw_meta": raw_meta,
                     "build": data.get("build", {}),
                 },
             }
@@ -204,11 +236,13 @@ class VercelClient:
             raw_events = data if isinstance(data, list) else data.get("events", [])
             events = []
             for ev in raw_events:
-                text = ev.get("text") or (ev.get("payload") or {}).get("text") or ""
+                if not isinstance(ev, dict):
+                    continue
                 events.append({
+                    "id": str(ev.get("id", "")),
                     "type": ev.get("type", ""),
                     "created": ev.get("created", ""),
-                    "text": str(text),
+                    "text": _extract_event_text(ev),
                 })
             return {"success": True, "events": events, "total": len(events)}
         except httpx.HTTPStatusError as e:
@@ -236,10 +270,12 @@ class VercelClient:
                     "id": log.get("id", ""),
                     "created_at": log.get("createdAt", ""),
                     "payload": log.get("payload", {}),
+                    "message": _extract_runtime_log_message(log),
                     "type": log.get("type", ""),
                     "source": log.get("source", ""),
                 }
                 for log in raw_logs
+                if isinstance(log, dict)
             ]
             return {"success": True, "logs": logs, "total": len(logs)}
         except httpx.HTTPStatusError as e:
