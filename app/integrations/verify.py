@@ -10,6 +10,7 @@ import requests
 
 from app.auth.jwt_auth import extract_org_id_from_jwt
 from app.config import get_tracer_base_url
+from app.integrations.azure_sql import build_azure_sql_config, validate_azure_sql_config
 from app.integrations.catalog import (
     resolve_effective_integrations as _resolve_effective_integrations,
 )
@@ -50,6 +51,7 @@ SUPPORTED_VERIFY_SERVICES = (
     "sentry",
     "mongodb",
     "postgresql",
+    "azure_sql",
     "mongodb_atlas",
     "mariadb",
     "google_docs",
@@ -403,6 +405,17 @@ def _verify_postgresql(source: str, config: dict[str, Any]) -> dict[str, str]:
     )
 
 
+def _verify_azure_sql(source: str, config: dict[str, Any]) -> dict[str, str]:
+    azure_sql_config = build_azure_sql_config(config)
+    result = validate_azure_sql_config(azure_sql_config)
+    return _result(
+        "azure_sql",
+        source,
+        "passed" if result.ok else "failed",
+        result.detail,
+    )
+
+
 def _verify_mongodb_atlas(source: str, config: dict[str, Any]) -> dict[str, str]:
     atlas_config = build_mongodb_atlas_config(config)
     result = validate_mongodb_atlas_config(atlas_config)
@@ -682,6 +695,8 @@ def verify_integrations(
             results.append(_verify_mongodb(source, config))
         elif current_service == "postgresql":
             results.append(_verify_postgresql(source, config))
+        elif current_service == "azure_sql":
+            results.append(_verify_azure_sql(source, config))
         elif current_service == "mongodb_atlas":
             results.append(_verify_mongodb_atlas(source, config))
         elif current_service == "mariadb":
